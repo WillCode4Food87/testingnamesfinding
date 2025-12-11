@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$RootPath,
 
-    [string]$OutputCsv = $(Join-Path -Path (Get-Location) -ChildPath 'jquery_deprecations.csv'),
+    [string]$OutputCsv = $(Join-Path -Path (Get-Location) -ChildPath 'view_script_imports.csv'),
 
     [int]$MaxPreviewLength = 200
 )
@@ -12,128 +12,8 @@ if (-not (Test-Path -LiteralPath $RootPath)) {
     throw "RootPath '$RootPath' does not exist."
 }
 
-# Target extensions
-$targetExtensions = @('.js', '.cshtml', '.html', '.aspx', '.ascx', '.master')
-
-# -------------------------------------------------------------------
-# Pattern definitions: deprecated jQuery usages
-# Each entry: Name, Regex (string), Description
-# FIRST capturing group is always the SubType (method/property/selector/handler).
-# -------------------------------------------------------------------
-$patterns = @(
-    # jQuery 1.8: .andSelf()
-    @{ Name = 'Deprecated_1_8_andSelf'
-       Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.(andSelf)\s*\('
-       Description = 'jQuery 1.8 .andSelf()' }
-
-    # jQuery 1.8: deferred.pipe()
-    @{ Name = 'Deprecated_1_8_deferred_pipe'
-       Regex = '(?:\$|jQuery)\.Deferred\s*\([^)]*\)[^;]*?\.(pipe)\s*\('
-       Description = 'jQuery 1.8 Deferred.pipe()' }
-
-    # jQuery 1.8: .error() event shortcut
-    @{ Name = 'Deprecated_1_8_error'
-       Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.(error)\s*\('
-       Description = 'jQuery 1.8 .error() event shortcut' }
-
-    # jQuery 1.8: .load() event shortcut
-    @{ Name = 'Deprecated_1_8_load'
-       Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.(load)\s*\('
-       Description = 'jQuery 1.8 .load() event shortcut' }
-
-    # jQuery 1.8: .size()
-    @{ Name = 'Deprecated_1_8_size'
-       Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.(size)\s*\('
-       Description = 'jQuery 1.8 .size()' }
-
-    # jQuery 1.8: .toggle() event shortcut (heuristic: first arg is function)
-    @{ Name = 'Deprecated_1_8_toggle_event'
-       Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.(toggle)\s*\(\s*function'
-       Description = 'jQuery 1.8 .toggle(handler, ...) event shortcut' }
-
-    # jQuery 1.8: .unload()
-    @{ Name = 'Deprecated_1_8_unload'
-       Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.(unload)\s*\('
-       Description = 'jQuery 1.8 .unload() event shortcut' }
-
-    # jQuery 1.9: jQuery.support
-    @{ Name = 'Deprecated_1_9_support'
-       Regex = '(?<!\w)jQuery\.(support)\b'
-       Description = 'jQuery 1.9 jQuery.support' }
-
-    # jQuery 1.10 / 2.0: .context
-    @{ Name = 'Deprecated_1_10_context'
-       Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.(context)\b'
-       Description = 'jQuery 1.10/2.0 .context property' }
-
-    # jQuery 3.0: .bind()
-    @{ Name = 'Deprecated_3_0_bind'
-       Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.(bind)\s*\('
-       Description = 'jQuery 3.0 .bind()' }
-
-    # jQuery 3.0: .delegate()
-    @{ Name = 'Deprecated_3_0_delegate'
-       Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.(delegate)\s*\('
-       Description = 'jQuery 3.0 .delegate()' }
-
-    # jQuery 3.0: jQuery.fx.interval
-    @{ Name = 'Deprecated_3_0_fx_interval'
-       Regex = '(?<!\w)jQuery\.fx\.(interval)\b'
-       Description = 'jQuery 3.0 jQuery.fx.interval' }
-
-    # jQuery 3.0: jQuery.parseJSON()
-    @{ Name = 'Deprecated_3_0_parseJSON'
-       Regex = '(?<!\w)jQuery\.(parseJSON)\s*\('
-       Description = 'jQuery 3.0 jQuery.parseJSON()' }
-
-    # jQuery 3.0: jQuery.unique()
-    @{ Name = 'Deprecated_3_0_unique'
-       Regex = '(?<!\w)jQuery\.(unique)\s*\('
-       Description = 'jQuery 3.0 jQuery.unique()' }
-
-    # jQuery 3.0: .unbind()
-    @{ Name = 'Deprecated_3_0_unbind'
-       Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.(unbind)\s*\('
-       Description = 'jQuery 3.0 .unbind()' }
-
-    # jQuery 3.0: .undelegate()
-    @{ Name = 'Deprecated_3_0_undelegate'
-       Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.(undelegate)\s*\('
-       Description = 'jQuery 3.0 .undelegate()' }
-
-    # jQuery 3.2: jQuery.holdReady()
-    @{ Name = 'Deprecated_3_2_holdReady'
-       Regex = '(?<!\w)jQuery\.(holdReady)\s*\('
-       Description = 'jQuery 3.2 jQuery.holdReady()' }
-
-    # jQuery 3.2: jQuery.isArray()
-    @{ Name = 'Deprecated_3_2_isArray'
-       Regex = '(?<!\w)jQuery\.(isArray)\s*\('
-       Description = 'jQuery 3.2 jQuery.isArray()' }
-
-    # jQuery 3.3: Event convenience methods on jQuery objects
-    # Group 1 = event name (click, blur, keydown, etc.) for SubType.
-    @{ Name = 'Deprecated_3_3_event_shortcuts'
-       Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.(blur|focus|focusin|focusout|load|resize|scroll|unload|click|dblclick|mousedown|mouseup|mousemove|mouseover|mouseout|mouseenter|mouseleave|change|select|submit|keydown|keypress|keyup|error|contextmenu)\s*\('
-       Description = 'jQuery 3.3 event convenience methods' }
-
-    # jQuery 3.3: Pseudo-selectors in jQuery selector strings
-    # Group 1 = selector token (eq, even, odd, first, last, lt, gt) for SubType.
-    @{ Name = 'Deprecated_3_3_pseudo_selectors'
-       Regex = '(?:\$|jQuery)\s*\([^)]*["''][^"'']*:(eq|even|odd|first|last|lt|gt)\b[^"'']*["'']'
-       Description = 'jQuery 3.3 :eq(), :even, :first, :gt(), :last, :lt(), :odd in selector strings' }
-
-    # jQuery 3.5: Global AJAX handlers on $(document)
-    # Group 1 = handler name (ajaxStart, ajaxComplete, etc.) for SubType.
-    @{ Name = 'Deprecated_3_5_ajax_global_handlers'
-       Regex = '(?<!\w)(?:\$|jQuery)\s*\(\s*document\s*\)\.(ajaxStart|ajaxStop|ajaxComplete|ajaxError|ajaxSuccess|ajaxSend)\s*\('
-       Description = 'jQuery 3.5 global AJAX event handlers on $(document)' }
-
-    # jQuery 3.5: jQuery.trim()
-    @{ Name = 'Deprecated_3_5_trim'
-       Regex = '(?<!\w)jQuery\.(trim)\s*\('
-       Description = 'jQuery 3.5 jQuery.trim()' }
-)
+# Target extensions under Views
+$targetExtensions = @('.aspx', '.ascx', '.cshtml', '.master', '.html')
 
 # -------------------------------------------------------------------
 # Helper: infer controller name from Views/<Controller>/...
@@ -161,84 +41,121 @@ function Get-ControllerName {
 }
 
 # -------------------------------------------------------------------
-# Collect candidate files (Views/Scripts/Content + allowed extensions)
+# Regexes for script imports
+# -------------------------------------------------------------------
+# 1) HTML script tags: <script src="..."></script>
+$scriptTagRegex = '<script\b[^>]*\bsrc\s*=\s*["'']([^"'']+)["''][^>]*>' 
+
+# 2) Scripts.Render(...) bundle helpers (Razor or WebForms)
+#    We first match Scripts.Render(<args>) then pull each quoted arg inside.
+$scriptsRenderCallRegex = 'Scripts\.Render\s*\(([^)]*)\)'
+$scriptsRenderArgRegex  = '["'']([^"'']+)["'']'   # each quoted bundle path
+
+# -------------------------------------------------------------------
+# Collect candidate files (Views + allowed extensions)
 # -------------------------------------------------------------------
 $files = Get-ChildItem -Path $RootPath -Recurse -File |
     Where-Object {
         ($targetExtensions -contains $_.Extension.ToLower()) -and
         ($_.FullName -notmatch '([\\/])bin([\\/])' -and $_.FullName -notmatch '([\\/])obj([\\/])') -and
-        ($_.FullName -match '([\\/])Views([\\/])' -or
-         $_.FullName -match '([\\/])Scripts([\\/])' -or
-         $_.FullName -match '([\\/])Content([\\/])')
+        ($_.FullName -match '([\\/])Views([\\/])')
     }
 
 if (-not $files) {
-    Write-Host "No candidate files found under $RootPath." -ForegroundColor Yellow
+    Write-Host "No view files found under $RootPath." -ForegroundColor Yellow
 }
 
-$filePaths = $files | Select-Object -ExpandProperty FullName
-
-# -------------------------------------------------------------------
-# Scan files using Select-String per pattern
-# -------------------------------------------------------------------
 $results = New-Object System.Collections.Generic.List[object]
 
-foreach ($pattern in $patterns) {
-    if (-not $filePaths) { break }
+foreach ($file in $files) {
+    $controllerName = Get-ControllerName -FilePath $file.FullName
+    $lines = Get-Content -LiteralPath $file.FullName
 
-    $matches = Select-String -Path $filePaths -Pattern $pattern.Regex -AllMatches -ErrorAction SilentlyContinue
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line       = $lines[$i]
+        $lineNumber = $i + 1
 
-    foreach ($mInfo in $matches) {
-        $line = $mInfo.Line
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
 
-        # Skip obvious comment / Razor-only lines
-        $trimStart = $line.TrimStart()
-        if ($trimStart.StartsWith('//') -or
-            $trimStart.StartsWith('/*') -or
-            $trimStart.StartsWith('*')  -or
-            $trimStart.StartsWith('@{') -or
-            $trimStart.StartsWith('@if')) {
-            continue
-        }
-
-        $controllerName = Get-ControllerName -FilePath $mInfo.Path
-        $preview        = $line.Trim()
+        $preview = $line.Trim()
         if ($preview.Length -gt $MaxPreviewLength) {
             $preview = $preview.Substring(0, $MaxPreviewLength)
         }
 
-        foreach ($m in $mInfo.Matches) {
+        # ---------------------------------------------
+        # 1) Script tags with src="..."
+        # ---------------------------------------------
+        $tagMatches = [System.Text.RegularExpressions.Regex]::Matches(
+            $line,
+            $scriptTagRegex,
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+        )
+
+        foreach ($m in $tagMatches) {
             if (-not $m.Success) { continue }
 
-            # SubType = first capturing group if present, else fallback to PatternName
-            $subType = $pattern.Name
-            if ($m.Groups.Count -gt 1 -and $m.Groups[1].Value) {
-                $subType = $m.Groups[1].Value
-            }
+            $src = $m.Groups[1].Value
+            if ([string]::IsNullOrWhiteSpace($src)) { continue }
 
             $results.Add(
                 [pscustomobject]@{
                     ControllerName = $controllerName
-                    FilePath       = $mInfo.Path
-                    FileName       = [IO.Path]::GetFileName($mInfo.Path)
-                    Extension      = [IO.Path]::GetExtension($mInfo.Path)
-                    PatternName    = $pattern.Name
-                    SubType        = $subType
-                    MatchValue     = $m.Value.Trim()
+                    FilePath       = $file.FullName
+                    FileName       = $file.Name
+                    Extension      = $file.Extension
+                    MatchValue     = $src
                     Preview        = $preview
-                    LineNumber     = $mInfo.LineNumber
+                    LineNumber     = $lineNumber
                 }
             ) | Out-Null
+        }
+
+        # ---------------------------------------------
+        # 2) Scripts.Render("...") helpers
+        #    Example: @Scripts.Render("~/bundles/jquery", "~/bundles/bootstrap")
+        # ---------------------------------------------
+        $renderMatches = [System.Text.RegularExpressions.Regex]::Matches(
+            $line,
+            $scriptsRenderCallRegex,
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+        )
+
+        foreach ($rm in $renderMatches) {
+            if (-not $rm.Success) { continue }
+
+            $argsText = $rm.Groups[1].Value
+            if ([string]::IsNullOrWhiteSpace($argsText)) { continue }
+
+            $argMatches = [System.Text.RegularExpressions.Regex]::Matches(
+                $argsText,
+                $scriptsRenderArgRegex,
+                [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+            )
+
+            foreach ($am in $argMatches) {
+                if (-not $am.Success) { continue }
+
+                $bundlePath = $am.Groups[1].Value
+                if ([string]::IsNullOrWhiteSpace($bundlePath)) { continue }
+
+                $results.Add(
+                    [pscustomobject]@{
+                        ControllerName = $controllerName
+                        FilePath       = $file.FullName
+                        FileName       = $file.Name
+                        Extension      = $file.Extension
+                        MatchValue     = $bundlePath
+                        Preview        = $preview
+                        LineNumber     = $lineNumber
+                    }
+                ) | Out-Null
+            }
         }
     }
 }
 
-# -------------------------------------------------------------------
-# Export results to CSV
-# -------------------------------------------------------------------
 $results |
-    Select-Object ControllerName, FilePath, FileName, Extension, PatternName, SubType, MatchValue, Preview, LineNumber |
+    Select-Object ControllerName, FilePath, FileName, Extension, MatchValue, Preview, LineNumber |
     Export-Csv -Path $OutputCsv -NoTypeInformation -Encoding UTF8
 
-Write-Host "Scanned $($files.Count) files. Found $($results.Count) matches. CSV written to: $OutputCsv"
+Write-Host "Scanned $($files.Count) view files. Found $($results.Count) script imports. CSV written to: $OutputCsv"
