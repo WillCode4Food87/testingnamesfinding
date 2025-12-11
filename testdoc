@@ -1,0 +1,192 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$RootPath,
+
+    [string]$OutputCsv = $(Join-Path -Path (Get-Location) -ChildPath 'jquery_deprecations.csv'),
+
+    [int]$MaxPreviewLength = 200
+)
+
+if (-not (Test-Path -LiteralPath $RootPath)) {
+    throw "RootPath '$RootPath' does not exist."
+}
+
+# Target folders and extensions
+$targetFolders    = @('Views', 'Scripts', 'Content')
+$targetExtensions = @('.js', '.cshtml', '.html', '.aspx', '.ascx', '.master')
+
+# -------------------------------------------------------------------
+# Pattern definitions: deprecated jQuery usages
+# Each entry: Name, Regex (string), Description
+# Regexes are anchored to $(...) or jQuery(...) or jQuery.* to cut Angular/CSS noise.
+# -------------------------------------------------------------------
+$patterns = @(
+    # jQuery 1.8: .andSelf()
+    @{ Name = 'Deprecated_1_8_andSelf'; Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.andSelf\s*\('; Description = 'jQuery 1.8 .andSelf()' }
+
+    # jQuery 1.8: deferred.pipe()
+    @{ Name = 'Deprecated_1_8_deferred_pipe'; Regex = '(?:\$|jQuery)\.Deferred\s*\([^)]*\)[^;]*?\.pipe\s*\('; Description = 'jQuery 1.8 Deferred.pipe()' }
+
+    # jQuery 1.8: .error() as event shortcut on jQuery objects
+    @{ Name = 'Deprecated_1_8_error'; Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.error\s*\('; Description = 'jQuery 1.8 .error() event shortcut' }
+
+    # jQuery 1.8: .load() as event shortcut on jQuery objects
+    @{ Name = 'Deprecated_1_8_load'; Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.load\s*\('; Description = 'jQuery 1.8 .load() event shortcut' }
+
+    # jQuery 1.8: .size()
+    @{ Name = 'Deprecated_1_8_size'; Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.size\s*\('; Description = 'jQuery 1.8 .size()' }
+
+    # jQuery 1.8: .toggle() event shortcut (heuristic: first arg is function)
+    @{ Name = 'Deprecated_1_8_toggle_event'; Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.toggle\s*\(\s*function'; Description = 'jQuery 1.8 .toggle(handler, ...) event shortcut' }
+
+    # jQuery 1.8: .unload()
+    @{ Name = 'Deprecated_1_8_unload'; Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.unload\s*\('; Description = 'jQuery 1.8 .unload() event shortcut' }
+
+    # jQuery 1.9: jQuery.support
+    @{ Name = 'Deprecated_1_9_support'; Regex = '(?<!\w)jQuery\.support\b'; Description = 'jQuery 1.9 jQuery.support' }
+
+    # jQuery 1.10 / 2.0: .context
+    @{ Name = 'Deprecated_1_10_context'; Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.context\b'; Description = 'jQuery 1.10/2.0 .context property' }
+
+    # jQuery 3.0: .bind()
+    @{ Name = 'Deprecated_3_0_bind'; Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.bind\s*\('; Description = 'jQuery 3.0 .bind()' }
+
+    # jQuery 3.0: .delegate()
+    @{ Name = 'Deprecated_3_0_delegate'; Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.delegate\s*\('; Description = 'jQuery 3.0 .delegate()' }
+
+    # jQuery 3.0: jQuery.fx.interval
+    @{ Name = 'Deprecated_3_0_fx_interval'; Regex = '(?<!\w)jQuery\.fx\.interval\b'; Description = 'jQuery 3.0 jQuery.fx.interval' }
+
+    # jQuery 3.0: jQuery.parseJSON()
+    @{ Name = 'Deprecated_3_0_parseJSON'; Regex = '(?<!\w)jQuery\.parseJSON\s*\('; Description = 'jQuery 3.0 jQuery.parseJSON()' }
+
+    # jQuery 3.0: jQuery.unique()
+    @{ Name = 'Deprecated_3_0_unique'; Regex = '(?<!\w)jQuery\.unique\s*\('; Description = 'jQuery 3.0 jQuery.unique()' }
+
+    # jQuery 3.0: .unbind()
+    @{ Name = 'Deprecated_3_0_unbind'; Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.unbind\s*\('; Description = 'jQuery 3.0 .unbind()' }
+
+    # jQuery 3.0: .undelegate()
+    @{ Name = 'Deprecated_3_0_undelegate'; Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.undelegate\s*\('; Description = 'jQuery 3.0 .undelegate()' }
+
+    # jQuery 3.2: jQuery.holdReady()
+    @{ Name = 'Deprecated_3_2_holdReady'; Regex = '(?<!\w)jQuery\.holdReady\s*\('; Description = 'jQuery 3.2 jQuery.holdReady()' }
+
+    # jQuery 3.2: jQuery.isArray()
+    @{ Name = 'Deprecated_3_2_isArray'; Regex = '(?<!\w)jQuery\.isArray\s*\('; Description = 'jQuery 3.2 jQuery.isArray()' }
+
+    # jQuery 3.3: Event convenience methods on jQuery objects
+    @{ Name = 'Deprecated_3_3_event_shortcuts'; Regex = '(?<!\w)(?:\$|jQuery)\s*\([^)]*\)\.(blur|focus|focusin|focusout|load|resize|scroll|unload|click|dblclick|mousedown|mouseup|mousemove|mouseover|mouseout|mouseenter|mouseleave|change|select|submit|keydown|keypress|keyup|error|contextmenu)\s*\('; Description = 'jQuery 3.3 event convenience methods (e.g. .click(), .keydown())' }
+
+    # jQuery 3.3: Pseudo-selectors in jQuery selector strings
+    # Heuristic: find :eq/:even/:odd/:first/:last/:lt/:gt inside quotes that are arguments to $(...) / jQuery(...)
+    @{ Name = 'Deprecated_3_3_pseudo_selectors'; Regex = '(?:\$|jQuery)\s*\([^)]*["''][^"'']*:(?:eq|even|odd|first|last|lt|gt)\b[^"'']*["'']'; Description = 'jQuery 3.3 :eq(), :even, :first, :gt(), :last, :lt(), :odd in selector strings' }
+
+    # jQuery 3.5: Global AJAX handlers on $(document)
+    @{ Name = 'Deprecated_3_5_ajax_global_handlers'; Regex = '(?<!\w)(?:\$|jQuery)\s*\(\s*document\s*\)\s*\.(ajaxStart|ajaxStop|ajaxComplete|ajaxError|ajaxSuccess|ajaxSend)\s*\('; Description = 'jQuery 3.5 global AJAX event handlers on $(document)' }
+
+    # jQuery 3.5: jQuery.trim()
+    @{ Name = 'Deprecated_3_5_trim'; Regex = '(?<!\w)jQuery\.trim\s*\('; Description = 'jQuery 3.5 jQuery.trim()' }
+)
+
+# -------------------------------------------------------------------
+# Helper: infer controller name from Views/<Controller>/...
+# -------------------------------------------------------------------
+function Get-ControllerName {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath
+    )
+
+    $parts = $FilePath -split '[\\/]+'
+    $viewsIndex = -1
+    for ($i = 0; $i -lt $parts.Length; $i++) {
+        if ($parts[$i].Equals('Views', [System.StringComparison]::InvariantCultureIgnoreCase)) {
+            $viewsIndex = $i
+            break
+        }
+    }
+
+    if ($viewsIndex -ge 0 -and ($viewsIndex + 1) -lt $parts.Length) {
+        return $parts[$viewsIndex + 1]
+    }
+
+    return 'N/A'
+}
+
+# -------------------------------------------------------------------
+# Collect candidate files (Views/Scripts/Content + allowed extensions)
+# -------------------------------------------------------------------
+$files = Get-ChildItem -Path $RootPath -Recurse -File |
+    Where-Object {
+        ($targetExtensions -contains $_.Extension.ToLower()) -and
+        ($_.FullName -notmatch '([\\/])bin([\\/])' -and $_.FullName -notmatch '([\\/])obj([\\/])') -and
+        ($_.FullName -match '([\\/])Views([\\/])' -or
+         $_.FullName -match '([\\/])Scripts([\\/])' -or
+         $_.FullName -match '([\\/])Content([\\/])')
+    }
+
+if (-not $files) {
+    Write-Host "No candidate files found under $RootPath." -ForegroundColor Yellow
+}
+
+$filePaths = $files | Select-Object -ExpandProperty FullName
+
+# -------------------------------------------------------------------
+# Scan files using Select-String for each pattern (avoids per-line nested regex loops)
+# -------------------------------------------------------------------
+$results = New-Object System.Collections.Generic.List[object]
+
+foreach ($pattern in $patterns) {
+    if (-not $filePaths) { break }
+
+    $matches = Select-String -Path $filePaths -Pattern $pattern.Regex -AllMatches -ErrorAction SilentlyContinue
+
+    foreach ($mInfo in $matches) {
+        # Skip obvious comment / Razor-only lines to reduce false positives
+        $line       = $mInfo.Line
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+
+        $trimStart = $line.TrimStart()
+        if ($trimStart.StartsWith('//') -or
+            $trimStart.StartsWith('/*') -or
+            $trimStart.StartsWith('*')  -or
+            $trimStart.StartsWith('@{') -or
+            $trimStart.StartsWith('@if')) {
+            continue
+        }
+
+        $controllerName = Get-ControllerName -FilePath $mInfo.Path
+        $preview        = $line.Trim()
+        if ($preview.Length -gt $MaxPreviewLength) {
+            $preview = $preview.Substring(0, $MaxPreviewLength)
+        }
+
+        foreach ($m in $mInfo.Matches) {
+            if (-not $m.Success) { continue }
+
+            $results.Add(
+                [pscustomobject]@{
+                    ControllerName = $controllerName
+                    FilePath       = $mInfo.Path
+                    FileName       = [IO.Path]::GetFileName($mInfo.Path)
+                    Extension      = [IO.Path]::GetExtension($mInfo.Path)
+                    PatternName    = $pattern.Name
+                    MatchValue     = $m.Value.Trim()
+                    Preview        = $preview
+                    LineNumber     = $mInfo.LineNumber
+                }
+            ) | Out-Null
+        }
+    }
+}
+
+# -------------------------------------------------------------------
+# Export results to CSV
+# -------------------------------------------------------------------
+$results |
+    Select-Object ControllerName, FilePath, FileName, Extension, PatternName, MatchValue, Preview, LineNumber |
+    Export-Csv -Path $OutputCsv -NoTypeInformation -Encoding UTF8
+
+Write-Host "Scanned $($files.Count) files. Found $($results.Count) matches. CSV written to: $OutputCsv"
