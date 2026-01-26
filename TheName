@@ -1,0 +1,315 @@
+1. Core AngularJS surface area (mandatory)
+A. Directives / attributes
+
+Search (regex enabled):
+
+ng-
+
+
+Then cluster uniques:
+
+Structural: ng-if, ng-show, ng-hide, ng-repeat, ng-switch
+
+Forms: ng-model, ng-change, ng-required, ng-pattern, ng-submit
+
+Scope flow: ng-init, ng-include
+
+Events: ng-click, ng-blur, ng-focus
+
+Class/style: ng-class, ng-style
+
+One-time bindings: ::
+
+Why: directive behavior changes post-1.6 surface here first.
+
+B. Angular expressions in markup
+
+Search:
+
+{{ 
+
+
+and
+
+$ctrl.
+
+
+Why:
+
+controllerAs usage
+
+Expression timing / digest differences
+
+:: one-time bindings hiding digest regressions
+
+C. AngularJS APIs in JS
+
+Search:
+
+$scope
+$rootScope
+$watch
+$watchGroup
+$apply
+$applyAsync
+$digest
+$timeout
+$interval
+$http
+$q
+$compile
+$parse
+$sanitize
+
+
+High-risk flags:
+
+$scope.$watch(function () { ... })
+
+$scope.$apply() inside jQuery callbacks
+
+$rootScope.$broadcast/$on
+
+2. Dependency injection & module wiring (very important in 1.8)
+A. DI style
+
+Search:
+
+function(
+
+
+and inspect Angular registrations without array annotation:
+
+.controller('X', function ($scope, $http) { ... })
+
+
+Why:
+
+1.8 + strict-DI surfaces latent minification bugs
+
+Even if you don’t enable strict-DI now, this tells you risk
+
+Optional search:
+
+/* @ngInject */
+
+B. Module definitions
+
+Search:
+
+angular.module(
+
+
+Inventory:
+
+App root module
+
+Feature modules
+
+Third-party modules included via .requires
+
+Verify:
+
+No duplicate module names
+
+Load order matches ScriptBundle
+
+3. angular-ui-bootstrap surface area
+A. Services / controllers
+
+Search:
+
+$uibModal
+$uibTooltip
+$uibPopover
+$uibPosition
+
+B. Directives
+
+Search:
+
+uib-
+
+
+Common hits:
+
+uib-modal
+
+uib-tooltip
+
+uib-popover
+
+uib-datepicker
+
+uib-accordion
+
+uib-typeahead
+
+Why:
+
+ui-bootstrap is the biggest compatibility gate in your stack.
+
+4. Angular-sanitize usage
+
+Search:
+
+ng-bind-html
+$sanitize
+
+
+Verify:
+
+Content passed is trusted/sanitized intentionally
+
+No reliance on deprecated sanitize behavior
+
+5. Routing (if present)
+
+If you use routing:
+
+Search:
+
+$routeProvider
+$route
+$routeParams
+
+
+or
+
+$stateProvider
+$state
+$stateParams
+
+
+Why:
+
+Route resolve timing changes often surface during upgrade.
+
+6. jQuery ↔ Angular integration (highest risk area)
+A. jQuery usage inside Angular
+
+Search:
+
+$( 
+jQuery(
+
+
+within:
+
+Controllers
+
+Directives
+
+Services
+
+Red flags:
+
+DOM mutation without $apply/$applyAsync
+
+Event handlers attached outside Angular lifecycle
+
+B. Direct DOM access
+
+Search:
+
+document.getElement
+querySelector
+
+
+Why:
+
+Often paired with $compile or manual scope wiring.
+
+7. Custom Angular directives (critical)
+
+Search:
+
+.directive(
+
+
+For each directive, inspect:
+
+scope: {} vs inherited scope
+
+require: 'ngModel'
+
+link vs compile
+
+Manual $watch logic
+
+Use of $timeout to “fix timing”
+
+These are common 1.5 → 1.8 break points.
+
+8. Legacy / deprecated patterns to explicitly hunt
+
+Search:
+
+ng-init
+replace: true
+$scope.$eval
+$http.success
+$http.error
+
+
+Why:
+
+Removed or discouraged patterns that may now warn or misbehave.
+
+9. Template loading & caching
+
+Search:
+
+templateUrl
+$http.get(
+
+
+Verify:
+
+No 404s
+
+Cache busting works
+
+No reliance on synchronous template load
+
+10. Build a coverage checklist from results
+
+Create a simple table or list:
+
+Angular directives used: ✓ inventoried
+
+Controllers/services counted: #
+
+Custom directives: #
+
+ui-bootstrap components used: list
+
+jQuery plugins bound to Angular: select2, masked input, others
+
+Forms count: #
+
+Modals count: #
+
+This becomes your upgrade coverage map and ties directly to the smoke checklist you already defined.
+
+Minimal “starter” search set (copy/paste)
+
+Run these first:
+
+ng-
+uib-
+angular.module
+.controller(
+.directive(
+$scope
+$uibModal
+ng-bind-html
+$sanitize
+$routeProvider
+$stateProvider
+$watch
+$apply
+$( 
+
+
+Default approach: run this inventory → map to smoke checklist items → upgrade Angular core → re-run inventory + smoke.
