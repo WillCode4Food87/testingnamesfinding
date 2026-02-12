@@ -49,3 +49,50 @@
     </div>
   </div>
 </section>
+
+
+.ux-stars {
+  display: flex;
+  flex-direction: row-reverse; /* critical */
+  justify-content: center;
+  gap: 6px;
+}
+
+.ux-star-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ux-star-btn {
+  cursor: pointer;
+  padding: 4px;
+}
+
+.ux-star {
+  width: 34px;
+  height: 34px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  color: #d1d5db;
+  transition: transform 150ms ease, color 150ms ease, fill 150ms ease;
+}
+
+/* Hover behavior */
+.ux-star-btn:hover .ux-star,
+.ux-star-btn:hover ~ .ux-star-btn .ux-star {
+  color: #facc15;
+  fill: #facc15;
+}
+
+/* Checked behavior */
+.ux-star-input:checked ~ .ux-star-btn .ux-star {
+  color: #f59e0b;
+  fill: #f59e0b;
+}
+
+/* Hover scale */
+.ux-star-btn:hover .ux-star {
+  transform: scale(1.08);
+}
